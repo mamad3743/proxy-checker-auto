@@ -24,15 +24,15 @@ winget install Python.Python.3
 npm install -g @railway/cli
 
 :: گرفتن پروژه
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 ```
 
 ### Linux / macOS (bash/zsh)
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 
 # Railway CLI (فقط برای railway_auto.py لازمه)
 bash <(curl -fsSL cli.new)
@@ -46,8 +46,8 @@ pkg install python git inetutils   # inetutils دستور ping رو می‌ده
 pkg install nodejs                 # پیش‌نیاز نصب Railway CLI
 npm install -g @railway/cli        # فقط برای railway_auto.py لازمه
 
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 ```
 
 ### iSH (آیفون / آیپد)
@@ -58,8 +58,8 @@ apk add python3 git iputils        # iputils دستور ping رو می‌ده
 apk add nodejs npm                 # فقط برای railway_auto.py لازمه
 npm install -g @railway/cli
 
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 ```
 
 > iSH یک محیط x86 روی معماری ARM شبیه‌سازی می‌کنه و کند هست — نصب CLI و اجرای ping کار می‌کنن ولی ممکنه نسبت به یه دستگاه واقعی کندتر باشن.
