@@ -1,0 +1,11 @@
+shuttle.proxy.rlwy.net,66.33.22.240
+monorail.proxy.rlwy.net,66.33.22.237
+caboose.proxy.rlwy.net,66.33.22.253
+viaduct.proxy.rlwy.net,66.33.22.243
+acela.proxy.rlwy.net,66.33.22.226
+sakura.proxy.rlwy.net,66.33.22.221
+tokaido.proxy.rlwy.net,66.33.22.222
+switchback.proxy.rlwy.net,66.33.22.230
+hayabusa.proxy.rlwy.net,66.33.22.223
+reseau.proxy.rlwy.net,66.33.22.224
+shortline.proxy.rlwy.net,66.33.22.244
