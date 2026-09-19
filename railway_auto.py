@@ -179,30 +179,53 @@ def ensure_cli():
     return path
 
 
-def run_railway(args, env, capture=True, timeout=90):
-    cmd = [RAILWAY_BIN] + args
-    try:
-        return subprocess.run(
-            cmd,
-            env=env,
-            stdin=subprocess.DEVNULL if capture else None,  # never hang on a hidden prompt
-            stdout=subprocess.PIPE if capture else None,
-            stderr=subprocess.PIPE if capture else None,
-            text=True,
-            errors="replace",
-            timeout=timeout if capture else None,
-        )
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(cmd, 124, "", "timed out")
-    except OSError as exc:
-        return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+def _without_proxy_env(env):
+    """Return a copy without common proxy variables for a CLI retry."""
+    clean = dict(env)
+    for key in list(clean):
+        if key.lower() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}:
+            clean.pop(key, None)
+    return clean
 
+
+def run_railway(args, env, capture=True, timeout=90, retry_without_proxy=False):
+    cmd = [RAILWAY_BIN] + args
+
+    def _run(child_env):
+        try:
+            return subprocess.run(
+                cmd,
+                env=child_env,
+                stdin=subprocess.DEVNULL if capture else None,
+                stdout=subprocess.PIPE if capture else None,
+                stderr=subprocess.PIPE if capture else None,
+                text=True,
+                errors="replace",
+                timeout=timeout if capture else None,
+            )
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(cmd, 124, "", "timed out")
+        except OSError as exc:
+            return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+
+    result = _run(env)
+    if retry_without_proxy and result.returncode != 0:
+        output = ((result.stderr or "") + (result.stdout or ""))
+        if any(x.lower() in output.lower() for x in
+               ("error decoding response body", "failed to fetch", "non-json", "http 400")):
+            clean = _without_proxy_env(env)
+            if clean != env:
+                retry = _run(clean)
+                if retry.returncode == 0:
+                    return retry
+    return result
 
 def _api_request(query, token=None, timeout=15):
     """POST a GraphQL query. Returns (ok, data_or_error_str, headers)."""
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "railway-tcp-proxy-toolkit/1.1",
+        "Accept": "application/json",
+        "User-Agent": "railway-tcp-proxy-toolkit/1.2",
     }
     if token:
         headers["Authorization"] = "Bearer " + token
@@ -225,15 +248,20 @@ def _api_request(query, token=None, timeout=15):
         data = json.loads(text)
     except ValueError:
         ray = (hdrs.get("CF-RAY") or "").split("-")[0] if hdrs else ""
+        server = (hdrs.get("Server") or "").lower() if hdrs else ""
+        lowered = text.lower()
         is_cf = (
-            (hdrs and "cloudflare" in (hdrs.get("Server") or "").lower())
-            or "cf-error" in text
-            or "Attention Required" in text
-            or "Sorry, you have been blocked" in text
+            "cloudflare" in server
+            or "cf-error" in lowered
+            or "attention required" in lowered
+            or "sorry, you have been blocked" in lowered
         )
         if is_cf:
             return False, "blocked: HTTP " + str(code) + (" | Ray ID: " + ray if ray else ""), hdrs
-        return False, "non-json: HTTP " + str(code) + " (body starts with: " + repr(text[:80]) + ")", hdrs
+        body_preview = repr(text[:240]) if text else "<empty>"
+        content_type = hdrs.get("Content-Type") if hdrs else None
+        extra = (" | Content-Type: " + content_type) if content_type else ""
+        return False, "non-json: HTTP " + str(code) + " (body: " + body_preview + ")" + extra, hdrs
 
     if "errors" in data and data["errors"]:
         msg = data["errors"][0].get("message", "GraphQL error")
@@ -341,24 +369,29 @@ def login(env, token):
 
     ok("Token valid (GraphQL): " + BOLD + py_msg + RESET)
 
-    # Now also check that the CLI itself can reach the API (needed for tcp-proxy etc.)
+    # Do not make `railway whoami` the authentication gate. The token has
+    # already been verified directly against Railway's public GraphQL API.
+    # Some CLI builds can return an empty/non-JSON HTTP 400 from `whoami` even
+    # when the same account token is valid.
     with Spinner("Checking Railway CLI connectivity..."):
-        result = run_railway(["whoami"], env)
-    if result.returncode != 0:
-        msg = ((result.stderr or "") + (result.stdout or "")).strip() or "unknown error"
-        if "error decoding response body" in msg or "Failed to fetch" in msg:
-            fail("CLI cannot talk to Railway API (non-JSON response).")
-            explain_api_failure(cli_msg=msg)
-            return False
-        # Token worked via Python but CLI fails for another reason
-        fail("CLI whoami failed: " + msg.splitlines()[0][:200])
-        print("  Token is valid, but the CLI has a problem. Try:")
-        print("    railway logout")
-        print("    then delete  %USERPROFILE%\\.railway  or  ~/.railway")
-        return False
+        result = run_railway(["whoami"], env, retry_without_proxy=True)
 
-    ok("CLI logged in: " + BOLD + (result.stdout or "").strip() + RESET)
-    return True
+    if result.returncode == 0:
+        ok("CLI authenticated: " + BOLD + (result.stdout or "").strip() + RESET)
+        return True
+
+    msg = ((result.stderr or "") + (result.stdout or "")).strip() or "unknown error"
+    if any(x in msg.lower() for x in ("error decoding response body", "failed to fetch", "http 400", "non-json")):
+        info("CLI `whoami` failed, but the Railway token was already verified directly.")
+        print("  CLI response: " + DIM + msg.splitlines()[0][:200] + RESET)
+        print("  Continuing with the Railway commands...\n")
+        return True
+
+    fail("CLI check failed: " + msg.splitlines()[0][:200])
+    print("  The token itself is valid. Check the Railway CLI installation/configuration.")
+    print("  Try: railway upgrade")
+    print("  If needed, also run: railway logout")
+    return False
 
 
 def _project_from(item, workspace_hint=None):
@@ -379,7 +412,7 @@ def _project_from(item, workspace_hint=None):
 def fetch_projects(env):
     """Return list of dicts: {id, name, workspace}. Empty list on failure."""
     with Spinner("Fetching your projects..."):
-        result = run_railway(["list", "--json"], env)
+        result = run_railway(["list", "--json"], env, retry_without_proxy=True)
     if result.returncode != 0 or not (result.stdout or "").strip():
         return []
     try:
@@ -462,11 +495,11 @@ def _parse_proxy_json(text):
 
 def list_proxies(env):
     """Return [(hostname, proxy_port, proxy_id_or_None)] for the linked service."""
-    result = run_railway(["tcp-proxy", "list", "--json"], env)
+    result = run_railway(["tcp-proxy", "list", "--json"], env, retry_without_proxy=True)
     entries = _parse_proxy_json(result.stdout or "") if result.returncode == 0 else []
 
     if not entries:
-        plain = run_railway(["tcp-proxy", "list"], env)
+        plain = run_railway(["tcp-proxy", "list"], env, retry_without_proxy=True)
         for match in HOST_RE.finditer(plain.stdout or ""):
             entries.append((match.group(1), match.group(2), None))
 
@@ -480,7 +513,7 @@ def list_proxies(env):
 
 def create_proxy(env, port):
     with Spinner("Creating TCP proxy..."):
-        result = run_railway(["tcp-proxy", "create", "--port", str(port)], env)
+        result = run_railway(["tcp-proxy", "create", "--port", str(port)], env, retry_without_proxy=True)
     if result.returncode != 0:
         fail("Failed to create proxy: " +
              ((result.stderr or result.stdout) or "unknown error").strip())
@@ -506,7 +539,7 @@ def delete_proxy(env, entry):
     hostname, port, proxy_id = entry
     # Edge hostnames are shared between customers, so a bare domain is not unique.
     ident = proxy_id or (hostname + ":" + str(port))
-    result = run_railway(["tcp-proxy", "delete", ident, "--yes"], env)
+    result = run_railway(["tcp-proxy", "delete", ident, "--yes"], env, retry_without_proxy=True)
     return result.returncode == 0
 
 

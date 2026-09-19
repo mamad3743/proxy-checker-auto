@@ -95,7 +95,7 @@ python3 railway_auto.py
 
 اجرا یه رابط خط‌فرمانی رنگی و مرحله‌به‌مرحله‌ست:
 
-1. **Step 1 — Login:** توکن Railway API رو می‌پرسه (ورودی مخفی)، بعد `railway whoami` رو چک می‌کنه. اگه متغیر محیطی `RAILWAY_API_TOKEN` از قبل ست شده باشه، همون رو استفاده می‌کنه و نمی‌پرسه.
+1. **Step 1 — Login:** توکن Railway API رو می‌پرسه (ورودی مخفی) و اول مستقیماً با GraphQL معتبر بودن توکن را بررسی می‌کند. سپس `railway whoami` را به‌عنوان تست CLI اجرا می‌کند؛ اگر `whoami` با خطای HTTP 400/non-JSON خراب باشد ولی GraphQL توکن را معتبر تشخیص داده باشد، برنامه متوقف نمی‌شود و ادامه می‌دهد. اگه متغیر محیطی `RAILWAY_API_TOKEN` از قبل ست شده باشه، همون رو استفاده می‌کنه و نمی‌پرسه.
 
    | چی وارد کنی |
    |---|
@@ -123,7 +123,7 @@ python3 railway_auto.py --ping-only
 
 ## عیب‌یابی
 
-- **`Failed to fetch: error decoding response body` / `expected value at line 1 column 1`** — یعنی API ریلوی به‌جای JSON یه صفحه‌ی وب (معمولاً بلاک Cloudflare) برگردونده. نسخهٔ جدید اسکریپت اول توکن را مستقیم با GraphQL چک می‌کند و بعد CLI را؛ اگر بلاک باشد تشخیص می‌دهد و راهنمایی می‌کند. رایج‌ترین علت: Cloudflare آی‌پی/شبکه‌ات را بلاک کرده. راه‌حل: آی‌پی خروجی را عوض کن (VPN دیگر، اینترنت موبایل، دستگاه دیگر) یا به پشتیبانی ریلوی با Ray ID پیام بده. توکن و اسکریپت مقصر نیستند.
+- **`Failed to fetch: error decoding response body` / `HTTP 400` در `railway whoami`** — نسخهٔ جدید اول توکن را مستقیماً با GraphQL روی `backboard.railway.com/graphql/v2` بررسی می‌کند. اگر GraphQL توکن را معتبر اعلام کند ولی `whoami` پاسخ غیرقابل‌خواندن بدهد، برنامه دیگر فقط به خاطر `whoami` متوقف نمی‌شود و ادامه می‌دهد. برای فرمان‌های CLI دارای خروجی، یک بار هم بدون متغیرهای Proxy رایج (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`) دوباره امتحان می‌کند. اگر تست مستقیم GraphQL هم با Cloudflare/HTML/شبکه شکست بخورد، همان‌جا علت را گزارش می‌کند.
 - **توکن Unauthorized / Not Authorized** — حتماً **Account token** بساز (در صفحه Tokens گزینه Workspace را خالی / No workspace بگذار). Project token برای `whoami` و لیست پروژه‌ها کار نمی‌کند.
 - **پینگ همه OFFLINE** — مطمئن شو دستور `ping` نصبه و فایروال ICMP رو نمی‌بنده.
 
