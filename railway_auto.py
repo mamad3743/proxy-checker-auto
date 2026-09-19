@@ -10,7 +10,8 @@ hosts.txt, ping-check every known edge IP, and optionally clean up
 the temporary proxy at the end.
 
 Usage:
-    python3 railway_auto.py        (Windows: python railway_auto.py)
+    python3 railway_auto.py              (Windows: python railway_auto.py)
+    python3 railway_auto.py --ping-only  (just ping-check hosts.txt, no Railway needed)
 
 If the Railway CLI is missing the script offers to install it.
 """
@@ -26,6 +27,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 
 import toolkit as tk
 from toolkit import (BOLD, CYAN, DIM, GREEN, MAGENTA, RED, RESET, YELLOW)
@@ -40,6 +43,7 @@ LOGO = r"""
        TCP Proxy Toolkit     |__/
 """
 
+API_URL = "https://backboard.railway.com/graphql/v2"
 RAILWAY_BIN = "railway"  # replaced by the full path in main()
 PROXY_PENDING = False    # True while a proxy created by this run still exists
 
@@ -194,11 +198,96 @@ def run_railway(args, env, capture=True, timeout=90):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
+def probe_api():
+    """Send one tiny GraphQL request from Python and classify the answer.
+
+    Returns (kind, detail) with kind in: "json", "blocked", "html", "error".
+    Used only to explain a CLI failure - it is a hint, not a verdict.
+    """
+    req = urllib.request.Request(
+        API_URL,
+        data=json.dumps({"query": "{__typename}"}).encode(),
+        headers={"Content-Type": "application/json",
+                 "User-Agent": "railway-tcp-proxy-toolkit/1.0"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            code, headers, raw = resp.status, resp.headers, resp.read(65536)
+    except urllib.error.HTTPError as exc:
+        code, headers, raw = exc.code, exc.headers, exc.read(65536)
+    except (urllib.error.URLError, OSError) as exc:
+        return "error", str(getattr(exc, "reason", exc))
+
+    text = raw.decode("utf-8", "replace")
+    try:
+        json.loads(text)
+        return "json", "HTTP " + str(code)
+    except ValueError:
+        pass
+
+    ray = (headers.get("CF-RAY") or "").split("-")[0]
+    is_cf = ("cloudflare" in (headers.get("Server") or "").lower()
+             or "cf-error" in text or "Attention Required" in text)
+    if is_cf:
+        return "blocked", "HTTP " + str(code) + (" | Ray ID: " + ray if ray else "")
+    return "html", "HTTP " + str(code)
+
+
+def explain_api_failure():
+    """Turn the CLI's cryptic 'error decoding response body' into a real diagnosis."""
+    print()
+    with Spinner("Checking why Railway's API did not answer with JSON..."):
+        kind, detail = probe_api()
+
+    if kind == "blocked":
+        fail("Cloudflare is blocking your connection to Railway (" + detail + ").")
+        print("  This is NOT a problem with your token or this script. Railway's firewall")
+        print("  rejects requests from your current IP / network before they reach the API.")
+        print("  What you can do:")
+        print("   - Change your outgoing IP: another VPN server, another ISP or mobile data.")
+        print("     (Free/shared VPN IPs are blocked most often.)")
+        print("   - Run this script from another device or network (e.g. Termux on a phone).")
+        print("   - Ask Railway support (station.railway.com) to unblock your IP and")
+        print("     include the Ray ID above.")
+    elif kind == "html":
+        fail("Railway's API answered with a web page instead of JSON (" + detail + ").")
+        print("  A proxy, captive portal, antivirus or filter is probably in the way, or")
+        print("  Railway is having an outage - check status.railway.com.")
+    elif kind == "error":
+        fail("Could not reach Railway at all: " + detail)
+        print("  Check your internet connection / VPN / proxy settings.")
+    else:  # json
+        info("Python reached the API fine (" + detail + "), but the Railway CLI did not.")
+        print("  Look for a stale proxy setting the CLI picks up:")
+        print("    Windows: set | findstr /i proxy")
+        print("    Linux/macOS/Termux: env | grep -i proxy")
+        print("  Then try again after `railway logout` and deleting the ~/.railway folder.")
+
+    print()
+    if ask("  Run the ping check on the saved hosts.txt instead (no Railway needed)? [Y/n]: "
+           ).lower() in ("", "y", "yes"):
+        run_ping_only()
+
+
+def run_ping_only():
+    hosts = tk.load_hosts()
+    if not hosts:
+        fail("hosts.txt is empty or missing.")
+        return
+    tk.ping_all(hosts)
+
+
 def login(env):
     with Spinner("Verifying token..."):
         result = run_railway(["whoami"], env)
     if result.returncode != 0:
-        fail("Login failed: " + ((result.stderr or result.stdout) or "unknown error").strip())
+        msg = ((result.stderr or "") + (result.stdout or "")).strip() or "unknown error"
+        if "error decoding response body" in msg:
+            fail("Login failed: the Railway CLI got a non-JSON answer from the API.")
+            explain_api_failure()
+        else:
+            fail("Login failed: " + msg)
         return False
     ok("Logged in: " + BOLD + (result.stdout or "").strip() + RESET)
     return True
@@ -383,6 +472,10 @@ def main():
     if not tk.ping_available():
         print(RED + tk.ping_missing_help() + RESET)
         sys.exit(1)
+
+    if "--ping-only" in sys.argv[1:]:
+        run_ping_only()
+        return
 
     ensure_cli()
 
