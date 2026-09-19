@@ -22,6 +22,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -34,6 +35,12 @@ PING_OUTPUT = "working_ping.txt"
 PING_COUNT = 2
 PING_TIMEOUT = 3
 IS_WINDOWS = platform.system().lower() == "windows"
+
+# On Windows, npm installs `railway` as a .cmd shim. subprocess.run(["railway", ...])
+# without shell=True often can't resolve that shim even though it works fine when
+# typed directly into cmd.exe. shutil.which() correctly checks PATHEXT (.cmd/.bat/.exe)
+# and returns the real, full path — resolve it once here and use it everywhere.
+RAILWAY_BIN = shutil.which("railway") or "railway"
 
 GREEN = chr(27) + "[92m"
 RED = chr(27) + "[91m"
@@ -121,7 +128,7 @@ class Spinner:
 # --------------------------------------------------------- railway calls --
 
 def run_railway(args, env, capture=True):
-    cmd = ["railway"] + args
+    cmd = [RAILWAY_BIN] + args
     return subprocess.run(
         cmd,
         env=env,
@@ -133,7 +140,7 @@ def run_railway(args, env, capture=True):
 
 def check_cli_installed():
     try:
-        subprocess.run(["railway", "--version"], stdout=subprocess.PIPE,
+        subprocess.run([RAILWAY_BIN, "--version"], stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, text=True, check=True)
         return True
     except Exception:
@@ -204,7 +211,7 @@ def pick_project(env):
 def link_project(env, project_id):
     """Let Railway's own picker handle team/environment/service selection."""
     banner("Link Project (choose environment & service)")
-    result = subprocess.run(["railway", "link", "-p", project_id], env=env)
+    result = subprocess.run([RAILWAY_BIN, "link", "-p", project_id], env=env)
     return result.returncode == 0
 
 
