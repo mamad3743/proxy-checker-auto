@@ -198,43 +198,65 @@ def run_railway(args, env, capture=True, timeout=90):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
+def _api_request(query, token=None, timeout=15):
+    """POST a GraphQL query. Returns (ok, data_or_error_str, headers)."""
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "railway-tcp-proxy-toolkit/1.1",
+    }
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    req = urllib.request.Request(
+        API_URL,
+        data=json.dumps({"query": query}).encode(),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            code, hdrs, raw = resp.status, resp.headers, resp.read(65536)
+    except urllib.error.HTTPError as exc:
+        code, hdrs, raw = exc.code, exc.headers, exc.read(65536)
+    except (urllib.error.URLError, OSError) as exc:
+        return False, "network: " + str(getattr(exc, "reason", exc)), None
+
+    text = raw.decode("utf-8", "replace")
+    try:
+        data = json.loads(text)
+    except ValueError:
+        ray = (hdrs.get("CF-RAY") or "").split("-")[0] if hdrs else ""
+        is_cf = (
+            (hdrs and "cloudflare" in (hdrs.get("Server") or "").lower())
+            or "cf-error" in text
+            or "Attention Required" in text
+            or "Sorry, you have been blocked" in text
+        )
+        if is_cf:
+            return False, "blocked: HTTP " + str(code) + (" | Ray ID: " + ray if ray else ""), hdrs
+        return False, "non-json: HTTP " + str(code) + " (body starts with: " + repr(text[:80]) + ")", hdrs
+
+    if "errors" in data and data["errors"]:
+        msg = data["errors"][0].get("message", "GraphQL error")
+        return False, "graphql: " + msg, hdrs
+    return True, data.get("data"), hdrs
+
+
 def probe_api():
     """Send one tiny GraphQL request from Python and classify the answer.
 
     Returns (kind, detail) with kind in: "json", "blocked", "html", "error".
-    Used only to explain a CLI failure - it is a hint, not a verdict.
     """
-    req = urllib.request.Request(
-        API_URL,
-        data=json.dumps({"query": "{__typename}"}).encode(),
-        headers={"Content-Type": "application/json",
-                 "User-Agent": "railway-tcp-proxy-toolkit/1.0"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            code, headers, raw = resp.status, resp.headers, resp.read(65536)
-    except urllib.error.HTTPError as exc:
-        code, headers, raw = exc.code, exc.headers, exc.read(65536)
-    except (urllib.error.URLError, OSError) as exc:
-        return "error", str(getattr(exc, "reason", exc))
-
-    text = raw.decode("utf-8", "replace")
-    try:
-        json.loads(text)
-        return "json", "HTTP " + str(code)
-    except ValueError:
-        pass
-
-    ray = (headers.get("CF-RAY") or "").split("-")[0]
-    is_cf = ("cloudflare" in (headers.get("Server") or "").lower()
-             or "cf-error" in text or "Attention Required" in text)
-    if is_cf:
-        return "blocked", "HTTP " + str(code) + (" | Ray ID: " + ray if ray else "")
-    return "html", "HTTP " + str(code)
+    ok, detail, _ = _api_request("{__typename}")
+    if ok:
+        return "json", "reachable"
+    if detail.startswith("blocked:"):
+        return "blocked", detail[len("blocked: "):]
+    if detail.startswith("network:"):
+        return "error", detail[len("network: "):]
+    return "html", detail
 
 
-def explain_api_failure():
+def explain_api_failure(cli_msg=""):
     """Turn the CLI's cryptic 'error decoding response body' into a real diagnosis."""
     print()
     with Spinner("Checking why Railway's API did not answer with JSON..."):
@@ -259,10 +281,15 @@ def explain_api_failure():
         print("  Check your internet connection / VPN / proxy settings.")
     else:  # json
         info("Python reached the API fine (" + detail + "), but the Railway CLI did not.")
-        print("  Look for a stale proxy setting the CLI picks up:")
-        print("    Windows: set | findstr /i proxy")
-        print("    Linux/macOS/Termux: env | grep -i proxy")
-        print("  Then try again after `railway logout` and deleting the ~/.railway folder.")
+        if cli_msg:
+            print("  CLI said: " + DIM + cli_msg.splitlines()[0][:120] + RESET)
+        print("  Try these:")
+        print("    1. railway logout")
+        print("    2. Delete the folder  %USERPROFILE%\\.railway  (Windows) or  ~/.railway")
+        print("    3. Check proxy env vars:")
+        print("       Windows: set | findstr /i proxy")
+        print("       Linux/macOS/Termux: env | grep -i proxy")
+        print("    4. Make sure the token is an Account token (leave Workspace blank when creating it).")
 
     print()
     if ask("  Run the ping check on the saved hosts.txt instead (no Railway needed)? [Y/n]: "
@@ -278,18 +305,59 @@ def run_ping_only():
     tk.ping_all(hosts)
 
 
-def login(env):
-    with Spinner("Verifying token..."):
+def verify_token_python(token):
+    """Validate the token with a direct GraphQL call (no CLI).
+
+    Returns (success: bool, message: str).
+    """
+    ok, data, _ = _api_request("query { me { name email } }", token=token)
+    if not ok:
+        return False, data
+    if not data or not data.get("me"):
+        return False, "graphql: empty me (token may be project-scoped; use an Account token)"
+    me = data["me"]
+    name = me.get("name") or me.get("email") or "ok"
+    return True, name
+
+
+def login(env, token):
+    """Verify token first with pure Python, then confirm CLI can talk to the API."""
+    with Spinner("Verifying token via GraphQL..."):
+        py_ok, py_msg = verify_token_python(token)
+
+    if not py_ok:
+        if py_msg.startswith("blocked:") or "non-json" in py_msg or py_msg.startswith("network:"):
+            fail("Login failed: " + py_msg)
+            explain_api_failure()
+            return False
+        if "Not Authorized" in py_msg or "Unauthorized" in py_msg or "empty me" in py_msg:
+            fail("Login failed: token rejected by Railway (" + py_msg + ").")
+            print("  Create an Account token at: https://railway.com/account/tokens")
+            print("  (leave the Workspace dropdown empty / 'No workspace').")
+            print("  Project tokens cannot run whoami / list projects.")
+            return False
+        fail("Login failed: " + py_msg)
+        return False
+
+    ok("Token valid (GraphQL): " + BOLD + py_msg + RESET)
+
+    # Now also check that the CLI itself can reach the API (needed for tcp-proxy etc.)
+    with Spinner("Checking Railway CLI connectivity..."):
         result = run_railway(["whoami"], env)
     if result.returncode != 0:
         msg = ((result.stderr or "") + (result.stdout or "")).strip() or "unknown error"
-        if "error decoding response body" in msg:
-            fail("Login failed: the Railway CLI got a non-JSON answer from the API.")
-            explain_api_failure()
-        else:
-            fail("Login failed: " + msg)
+        if "error decoding response body" in msg or "Failed to fetch" in msg:
+            fail("CLI cannot talk to Railway API (non-JSON response).")
+            explain_api_failure(cli_msg=msg)
+            return False
+        # Token worked via Python but CLI fails for another reason
+        fail("CLI whoami failed: " + msg.splitlines()[0][:200])
+        print("  Token is valid, but the CLI has a problem. Try:")
+        print("    railway logout")
+        print("    then delete  %USERPROFILE%\\.railway  or  ~/.railway")
         return False
-    ok("Logged in: " + BOLD + (result.stdout or "").strip() + RESET)
+
+    ok("CLI logged in: " + BOLD + (result.stdout or "").strip() + RESET)
     return True
 
 
@@ -500,7 +568,7 @@ def main():
     # A freshly installed CLI may not be on PATH; make sure children can find it.
     env["PATH"] = os.path.dirname(RAILWAY_BIN) + os.pathsep + env.get("PATH", "")
 
-    if not login(env):
+    if not login(env, token):
         sys.exit(1)
 
     banner("Step 2 - Choose your project")

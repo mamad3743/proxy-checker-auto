@@ -123,7 +123,8 @@ python3 railway_auto.py --ping-only
 
 ## عیب‌یابی
 
-- **`Failed to fetch: error decoding response body`** — یعنی API ریلوی به‌جای JSON یه صفحه‌ی وب برگردونده. اسکریپت خودش این حالت رو تشخیص می‌ده و علتش رو چاپ می‌کنه. رایج‌ترین علت: Cloudflare آی‌پی/شبکه‌ات رو بلاک کرده (صفحه‌ی «Sorry, you have been blocked»). راه‌حل: آی‌پی خروجی رو عوض کن (VPN دیگه، اینترنت موبایل، دستگاه دیگه) یا به پشتیبانی ریلوی با Ray ID پیام بده. توکن و اسکریپت مقصر نیستن.
+- **`Failed to fetch: error decoding response body` / `expected value at line 1 column 1`** — یعنی API ریلوی به‌جای JSON یه صفحه‌ی وب (معمولاً بلاک Cloudflare) برگردونده. نسخهٔ جدید اسکریپت اول توکن را مستقیم با GraphQL چک می‌کند و بعد CLI را؛ اگر بلاک باشد تشخیص می‌دهد و راهنمایی می‌کند. رایج‌ترین علت: Cloudflare آی‌پی/شبکه‌ات را بلاک کرده. راه‌حل: آی‌پی خروجی را عوض کن (VPN دیگر، اینترنت موبایل، دستگاه دیگر) یا به پشتیبانی ریلوی با Ray ID پیام بده. توکن و اسکریپت مقصر نیستند.
+- **توکن Unauthorized / Not Authorized** — حتماً **Account token** بساز (در صفحه Tokens گزینه Workspace را خالی / No workspace بگذار). Project token برای `whoami` و لیست پروژه‌ها کار نمی‌کند.
 - **پینگ همه OFFLINE** — مطمئن شو دستور `ping` نصبه و فایروال ICMP رو نمی‌بنده.
 
 ## نکات
