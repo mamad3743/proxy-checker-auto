@@ -57,6 +57,21 @@ LOGO = r"""
 
 # ------------------------------------------------------------- UI helpers --
 
+def credit_box():
+    lines = [
+        "Telegram : @mamadi1048",
+        "GitHub   : github.com/mamad3743/proxy-checker-auto",
+    ]
+    max_len = max(len(l) for l in lines)
+    inner = max_len + 2
+    print("  " + CYAN + "╔" + "═" * inner + "╗" + RESET)
+    for l in lines:
+        content = " " + l + " " * (max_len - len(l)) + " "
+        print("  " + CYAN + "║" + RESET + BOLD + content + RESET + CYAN + "║" + RESET)
+    print("  " + CYAN + "╚" + "═" * inner + "╝" + RESET)
+    print()
+
+
 def banner(text):
     print(BOLD + CYAN + "\n  " + text + RESET)
     print(CYAN + "  " + "-" * 50 + RESET)
@@ -229,8 +244,9 @@ def list_proxies(env):
     return entries
 
 
-def delete_proxy(env, proxy_id):
-    result = run_railway(["tcp-proxy", "delete", proxy_id, "--yes"], env)
+def delete_proxy(env, identifier):
+    """identifier can be a proxy ID or its domain (both are accepted by the CLI)."""
+    result = run_railway(["tcp-proxy", "delete", identifier, "--yes"], env)
     return result.returncode == 0
 
 
@@ -306,10 +322,101 @@ def ping_all(hosts):
     print("  Saved online list to: " + BOLD + PING_OUTPUT + RESET + "\n")
 
 
+def do_create_flow(env):
+    banner("Create a TCP Proxy")
+    print("  " + DIM + "Railway now allows up to 3 TCP proxies per service." + RESET)
+    print("  " + DIM + "Common ports: 5432 Postgres · 6379 Redis · 3306 MySQL · 27017 MongoDB" + RESET)
+
+    before = {p[0] for p in list_proxies(env)}
+    if len(before) >= 3:
+        fail("This service already has 3 TCP proxies (Railway's current max). Delete one first.")
+        return
+
+    port = input("  Internal application port to expose: ").strip()
+    if not create_proxy(env, port):
+        return
+
+    info("Looking up assigned proxy domain...")
+    proxies = list_proxies(env)
+    if not proxies:
+        fail("Could not read back the new proxy. Check the dashboard.")
+        return
+
+    # Multiple proxies can now exist on one service, so diff against the
+    # pre-creation list instead of assuming the last entry is the new one.
+    new_ones = [p for p in proxies if p[0] not in before]
+    hostname, proxy_port, proxy_id = new_ones[0] if new_ones else proxies[-1]
+    ok("Assigned: " + BOLD + hostname + ":" + str(proxy_port) + RESET)
+
+    ip = resolve_ip(hostname)
+    if not ip:
+        fail("DNS resolution failed for " + hostname)
+        return
+    ok("Resolved IP: " + BOLD + ip + RESET)
+
+    hosts = load_hosts()
+    is_new = hostname not in hosts
+    hosts[hostname] = ip
+    save_hosts(hosts)
+    if is_new:
+        print(YELLOW + "  ★ New edge hostname added to hosts.txt!" + RESET)
+    else:
+        info("Hostname already known, IP refreshed in hosts.txt.")
+
+    ping_all(hosts)
+
+    identifier = proxy_id or hostname
+    remove = input("  Delete this discovery proxy now? [y/N]: ").strip().lower()
+    if remove == "y":
+        if delete_proxy(env, identifier):
+            ok("Proxy deleted.")
+        else:
+            fail("Could not delete automatically — remove it from the dashboard.")
+
+
+def do_delete_flow(env):
+    banner("Delete an Existing TCP Proxy")
+    proxies = list_proxies(env)
+    if not proxies:
+        info("This service has no TCP proxies right now.")
+        return
+
+    print()
+    for i, (hostname, port, pid) in enumerate(proxies, 1):
+        print("   " + MAGENTA + BOLD + f"[{i}]" + RESET + f"  {hostname}:{port}")
+    print()
+
+    choice = input("  Pick a proxy to delete (number, or 'a' for all, Enter to cancel): ").strip().lower()
+    if not choice:
+        info("Cancelled.")
+        return
+
+    if choice == "a":
+        targets = proxies
+    elif choice.isdigit() and 1 <= int(choice) <= len(proxies):
+        targets = [proxies[int(choice) - 1]]
+    else:
+        fail("Invalid choice.")
+        return
+
+    confirm = input(f"  Really delete {len(targets)} proxy(ies)? [y/N]: ").strip().lower()
+    if confirm != "y":
+        info("Cancelled.")
+        return
+
+    for hostname, port, pid in targets:
+        identifier = pid or hostname
+        if delete_proxy(env, identifier):
+            ok(f"Deleted {hostname}:{port}")
+        else:
+            fail(f"Could not delete {hostname}:{port}")
+
+
 # ------------------------------------------------------------------- main --
 
 def main():
     print(MAGENTA + BOLD + LOGO + RESET)
+    credit_box()
 
     if not check_cli_installed():
         fail("Railway CLI not found on PATH.")
@@ -344,55 +451,22 @@ def main():
         sys.exit(1)
     ok("Project linked.")
 
-    banner("Step 3 — Create the TCP proxy")
-    print("  " + DIM + "Railway now allows up to 3 TCP proxies per service." + RESET)
-    print("  " + DIM + "Common ports: 5432 Postgres · 6379 Redis · 3306 MySQL · 27017 MongoDB" + RESET)
+    banner("Step 3 — What do you want to do?")
+    print("   " + MAGENTA + BOLD + "[1]" + RESET + "  Create a new TCP proxy")
+    print("   " + MAGENTA + BOLD + "[2]" + RESET + "  Delete an existing TCP proxy")
+    print("   " + MAGENTA + BOLD + "[3]" + RESET + "  Just ping-check hosts.txt")
+    print()
+    choice = input("  Choose (1/2/3): ").strip()
 
-    before = {p[0] for p in list_proxies(env)}
-    if len(before) >= 3:
-        fail("This service already has 3 TCP proxies (Railway's current max). Delete one first.")
-        sys.exit(1)
-
-    port = input("  Internal application port to expose: ").strip()
-    if not create_proxy(env, port):
-        sys.exit(1)
-
-    info("Looking up assigned proxy domain...")
-    proxies = list_proxies(env)
-    if not proxies:
-        fail("Could not read back the new proxy. Check the dashboard.")
-        sys.exit(1)
-
-    # Multiple proxies can now exist on one service, so diff against the
-    # pre-creation list instead of assuming the last entry is the new one.
-    new_ones = [p for p in proxies if p[0] not in before]
-    hostname, proxy_port, proxy_id = new_ones[0] if new_ones else proxies[-1]
-    ok("Assigned: " + BOLD + hostname + ":" + str(proxy_port) + RESET)
-
-    ip = resolve_ip(hostname)
-    if not ip:
-        fail("DNS resolution failed for " + hostname)
-        sys.exit(1)
-    ok("Resolved IP: " + BOLD + ip + RESET)
-
-    hosts = load_hosts()
-    is_new = hostname not in hosts
-    hosts[hostname] = ip
-    save_hosts(hosts)
-    if is_new:
-        print(YELLOW + "  ★ New edge hostname added to hosts.txt!" + RESET)
+    if choice == "1":
+        do_create_flow(env)
+    elif choice == "2":
+        do_delete_flow(env)
+    elif choice == "3":
+        ping_all(load_hosts())
     else:
-        info("Hostname already known, IP refreshed in hosts.txt.")
-
-    ping_all(hosts)
-
-    if proxy_id:
-        remove = input("  Delete this discovery proxy now? [y/N]: ").strip().lower()
-        if remove == "y":
-            if delete_proxy(env, proxy_id):
-                ok("Proxy deleted.")
-            else:
-                fail("Could not delete proxy automatically — remove it from the dashboard.")
+        fail("Invalid choice.")
+        sys.exit(1)
 
     print(BOLD + GREEN + "\n  Done.\n" + RESET)
 
