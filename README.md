@@ -4,57 +4,38 @@
 
 - **`ping_check.py`** — تمام IP های داخل `hosts.txt` رو پینگ می‌کنه و می‌گه کدوم‌ها آنلاین هستن.
 - **`railway_auto.py`** — با توکن API اکانت ریلوی لاگین می‌کنه، روی یکی از سرویس‌های خودت یه TCP Proxy می‌سازه تا دامنه‌ای که ریلوی اختصاص داده رو کشف کنه، اون رو به IP تبدیل می‌کنه، تو `hosts.txt` ذخیره می‌کنه و بعد پینگ‌چک رو اجرا می‌کنه.
-- **`toolkit.py`** — کدهای مشترک دو اسکریپت بالا (پینگ، خوندن/نوشتن `hosts.txt`، رنگ‌ها).
 - **`hosts.txt`** — لیست `hostname,ip` نودهای شناخته‌شده‌ی پراکسی ریلوی.
-
-## اجرا با یک دستور
-
-بعد از نصب Python و Git، فقط همین یه خط رو بزن (اگه Railway CLI نصب نباشه، خود اسکریپت می‌پرسه نصبش کنه):
-
-**Linux / macOS / Termux / iSH**
-
-```bash
-git clone https://github.com/mamad3743/proxy-checker-auto.git && cd proxy-checker-auto && python3 railway_auto.py
-```
-
-**Windows (cmd یا PowerShell 7)**
-
-```cmd
-git clone https://github.com/mamad3743/proxy-checker-auto.git && cd proxy-checker-auto && python railway_auto.py
-```
-
-> توی PowerShell قدیمی (نسخه 5.1) `&&` کار نمی‌کنه؛ به‌جاش `;` بذار. توی ویندوز دستور `python3` معمولاً کار نمی‌کنه، از `python` یا `py` استفاده کن.
-
-اگه پروژه رو از قبل داری، فقط داخل پوشه‌ش اجرا کن:
-
-```bash
-python3 railway_auto.py      # ویندوز: python railway_auto.py
-```
 
 ## پیش‌نیازها
 
 - Python نسخه 3.8 به بالا
-- دستور `ping` روی سیستم (روی Windows، Linux، macOS از قبل هست؛ روی Termux با `pkg install inetutils` و روی iSH با `apk add iputils`)
-- [Railway CLI](https://docs.railway.com/guides/cli) — فقط برای `railway_auto.py` لازمه. اگه نصب نباشه اسکریپت خودش پیشنهاد نصب می‌ده (با `npm` یا اسکریپت رسمی).
+- دستور `ping` روی سیستم (روی Windows، Linux، macOS، Termux و iSH از قبل هست)
+- [Railway CLI](https://docs.railway.com/guides/cli) — فقط برای اجرای `railway_auto.py` لازمه
 
-## نصب دستی (اختیاری)
+## نصب
 
-### Windows
+### Windows (cmd / PowerShell)
 
 ```cmd
 :: پایتون (اگه نصب نیست)
-winget install Python.Python.3.12
+winget install Python.Python.3
 
 :: Railway CLI (فقط برای railway_auto.py لازمه)
 npm install -g @railway/cli
-:: یا: scoop install railway
+
+:: گرفتن پروژه
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 ```
 
-### Linux / macOS
+### Linux / macOS (bash/zsh)
 
 ```bash
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
+
 # Railway CLI (فقط برای railway_auto.py لازمه)
-bash <(curl -fsSL railway.com/install.sh)
+bash <(curl -fsSL cli.new)
 ```
 
 ### Termux (اندروید)
@@ -64,6 +45,9 @@ pkg update && pkg upgrade
 pkg install python git inetutils   # inetutils دستور ping رو می‌ده
 pkg install nodejs                 # پیش‌نیاز نصب Railway CLI
 npm install -g @railway/cli        # فقط برای railway_auto.py لازمه
+
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 ```
 
 ### iSH (آیفون / آیپد)
@@ -73,6 +57,9 @@ apk update
 apk add python3 git iputils        # iputils دستور ping رو می‌ده
 apk add nodejs npm                 # فقط برای railway_auto.py لازمه
 npm install -g @railway/cli
+
+git clone https://github.com/mamad3743/proxy-checker-auto.git
+cd proxy-checker-auto
 ```
 
 > iSH یک محیط x86 روی معماری ARM شبیه‌سازی می‌کنه و کند هست — نصب CLI و اجرای ping کار می‌کنن ولی ممکنه نسبت به یه دستگاه واقعی کندتر باشن.
@@ -85,7 +72,7 @@ npm install -g @railway/cli
 python3 ping_check.py
 ```
 
-فایل `hosts.txt` رو می‌خونه، هر IP رو پینگ می‌کنه، وضعیت ONLINE/OFFLINE هرکدوم رو چاپ می‌کنه و لیست فعال‌ها رو تو `working_ping.txt` (کنار اسکریپت) ذخیره می‌کنه. از هر پوشه‌ای می‌تونی اجراش کنی.
+فایل `hosts.txt` رو می‌خونه، هر IP رو پینگ می‌کنه، وضعیت ONLINE/OFFLINE هرکدوم رو چاپ می‌کنه و لیست فعال‌ها رو تو `working_ping.txt` ذخیره می‌کنه.
 
 ### ۲. کشف یه پراکسی جدید + پینگ‌چک کامل
 
@@ -95,46 +82,38 @@ python3 railway_auto.py
 
 اجرا یه رابط خط‌فرمانی رنگی و مرحله‌به‌مرحله‌ست:
 
-1. **Step 1 — Login:** توکن Railway API رو می‌پرسه (ورودی مخفی) و اول مستقیماً با GraphQL معتبر بودن توکن را بررسی می‌کند. سپس `railway whoami` را به‌عنوان تست CLI اجرا می‌کند؛ اگر `whoami` با خطای HTTP 400/non-JSON خراب باشد ولی GraphQL توکن را معتبر تشخیص داده باشد، برنامه متوقف نمی‌شود و ادامه می‌دهد. اگه متغیر محیطی `RAILWAY_API_TOKEN` از قبل ست شده باشه، همون رو استفاده می‌کنه و نمی‌پرسه.
+1. **لوگو + Step 1 — Login:** توکن Railway API رو می‌پرسه (ورودی مخفی)، بعد با اسپینر `railway whoami` رو چک می‌کنه.
 
    | چی وارد کنی |
    |---|
    | یه **Account/Workspace Token** از داشبورد ریلوی (Account Settings → Tokens) |
 
-2. **Step 2 — انتخاب پروژه:** لیست پروژه‌های اکانتت رو خودش می‌خونه (`railway list --json`) و به‌صورت یه منوی شماره‌دار نشون می‌ده. اگه نتونست خودکار بخونه، خروجی خام `railway list` رو نشون می‌ده و Project ID رو ازت می‌پرسه. بعد با `railway link` وصل می‌شه — منوی رسمی ریلوی برای انتخاب Environment/Service همون‌جا بالا میاد.
+2. **Step 2 — انتخاب پروژه:** لیست پروژه‌های اکانتت رو خودش می‌خونه (`railway list --json`) و به‌صورت یه منوی شماره‌دار نشون می‌ده — فقط عدد موردنظر رو می‌زنی. اگه به هر دلیلی نتونست خودکار بخونه، خروجی خام `railway list` رو نشون می‌ده و ازت Project ID/نام رو می‌پرسه.
 
-3. **Step 3 — TCP Proxy:**
-   - اگه سرویس **از قبل پراکسی داشته باشه**، لیستشون رو نشون می‌ده: یا یکی از موجودها رو انتخاب می‌کنی یا `n` می‌زنی تا جدید بسازه. پراکسی‌های موجود **هیچ‌وقت** حذف نمی‌شن.
-   - برای ساخت جدید پورت داخلی سرویس رو می‌پرسه (5432 Postgres، 6379 Redis، 3306 MySQL، 27017 MongoDB)، پراکسی رو می‌سازه و صبر می‌کنه دامنه‌ش اختصاص داده بشه.
+3. سپس با `railway link` وصل می‌شه — اگه پروژه چند Environment یا چند Service داشته باشه، همون‌جا منوی رسمی خود ریلوی برای انتخاب Environment/Service بالا میاد.
 
-4. دامنه‌ی اختصاص‌داده‌شده (مثلاً `acela.proxy.rlwy.net`) رو به IP تبدیل می‌کنه — **چک باید با IP انجام بشه**، چون خود دامنه به پینگ ICMP جواب نمی‌ده. اگه دامنه جدید بود با ★ به `hosts.txt` اضافه می‌شه.
+4. **Step 3 — یه منو نشون می‌ده:**
 
-5. همه‌ی هاست‌های `hosts.txt` رو پینگ می‌کنه و با رنگ سبز/قرمز (ONLINE/OFFLINE) نشون می‌ده.
+   | گزینه | کار |
+   |---|---|
+   | ۱ | ساخت TCP Proxy جدید |
+   | ۲ | حذف یکی از پراکسی‌های موجود روی همون سرویس |
+   | ۳ | فقط پینگ‌چک `hosts.txt` (بدون تماس با API) |
 
-6. اگه پراکسی رو همین اجرا ساخته باشه، در آخر می‌پرسه حذفش کنه یا نه.
+### گزینه‌ی ۱ — ساخت پراکسی
 
-### ۳. فقط پینگ‌چک، بدون نیاز به ریلوی / توکن
+پورت داخلی سرویس رو می‌پرسه (راهنمای پورت‌های رایج هم نشون می‌ده: 5432 Postgres، 6379 Redis، 3306 MySQL، 27017 MongoDB) و پراکسی رو می‌سازه. دامنه‌ای که ریلوی اختصاص داده (مثلاً `acela.proxy.rlwy.net`) رو می‌خونه و به IP تبدیل می‌کنه — **چک باید با IP انجام بشه**، چون خود دامنه به پینگ ICMP جواب نمی‌ده. اگه دامنه جدید بود با علامت ★ به `hosts.txt` اضافه‌ش می‌کنه، بعد همه‌ی هاست‌های `hosts.txt` رو پینگ می‌کنه. در آخر می‌پرسه همون پراکسی موقتی که ساخته شده حذف بشه یا نه.
 
-```bash
-python3 railway_auto.py --ping-only
-```
+### گزینه‌ی ۲ — حذف پراکسی
 
-معادل `ping_check.py` هست. اگه ریلوی از شبکه‌ات در دسترس نیست (بخش بعد) این راه بازم کار می‌کنه.
-
-## عیب‌یابی
-
-- **`Failed to fetch: error decoding response body` / `HTTP 400` در `railway whoami`** — نسخهٔ جدید اول توکن را مستقیماً با GraphQL روی `backboard.railway.com/graphql/v2` بررسی می‌کند. اگر GraphQL توکن را معتبر اعلام کند ولی `whoami` پاسخ غیرقابل‌خواندن بدهد، برنامه دیگر فقط به خاطر `whoami` متوقف نمی‌شود و ادامه می‌دهد. برای فرمان‌های CLI دارای خروجی، یک بار هم بدون متغیرهای Proxy رایج (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`) دوباره امتحان می‌کند. اگر تست مستقیم GraphQL هم با Cloudflare/HTML/شبکه شکست بخورد، همان‌جا علت را گزارش می‌کند.
-- **توکن Unauthorized / Not Authorized** — حتماً **Account token** بساز (در صفحه Tokens گزینه Workspace را خالی / No workspace بگذار). Project token برای `whoami` و لیست پروژه‌ها کار نمی‌کند.
-- **پینگ همه OFFLINE** — مطمئن شو دستور `ping` نصبه و فایروال ICMP رو نمی‌بنده.
+همه‌ی TCP Proxy های سرویس انتخاب‌شده رو لیست می‌کنه، یه شماره وارد می‌کنی (یا `a` برای همه)، یه بار تأیید می‌گیره و بعد حذف می‌کنه.
 
 ## نکات
 
-- ریلوی برای هر سرویس سقف تعداد TCP Proxy داره (این سقف قبلاً تغییر کرده)، برای همین اسکریپت عدد ثابتی فرض نمی‌کنه: اگه پراکسی موجود باشه می‌تونی از همون استفاده کنی یا `n` بزنی تا یکی جدید بسازه؛ اگه به سقف رسیده باشی، خطای خود ریلوی رو نشون می‌ده.
-- دامنه‌های `*.proxy.rlwy.net` بین کاربرا مشترکن و فقط پورت فرق می‌کنه؛ برای همین حذف پراکسی با ID یا `دامنه:پورت` انجام می‌شه.
-- توکن API فقط تو محیط اجرای همون پردازش نگه داشته می‌شه؛ هیچ‌وقت روی دیسک نوشته یا لاگ نمی‌شه. (خود `railway link` اطلاعات پروژه‌ی لینک‌شده رو تو کانفیگ Railway CLI ذخیره می‌کنه؛ با `railway unlink` پاکش می‌کنی.)
-- فرمت `hosts.txt`: هر خط یک رکورد به شکل `hostname,ip`. خط‌های نامعتبر نادیده گرفته می‌شن.
-- اگه پراکسی بعد از ساخت فعال نشد، سرویس رو یه‌بار Redeploy کن.
+- هر سرویس تا **۳ تا TCP Proxy** می‌تونه داشته باشه (قبلاً فقط ۱ تا مجاز بود، ریلوی این محدودیت رو باز کرده). اگه سرویس از قبل ۳ تا پراکسی داشته باشه، اسکریپت خودش قبل از تلاش برای ساخت، بهت خبر می‌ده که باید یکی رو حذف کنی.
+- توکن API فقط تو محیط اجرای همون پردازش نگه داشته می‌شه؛ هیچ‌وقت روی دیسک نوشته یا لاگ نمی‌شه.
+- فرمت `hosts.txt`: هر خط یک رکورد به شکل `hostname,ip`.
 
 ## امنیت
 
-هیچ‌وقت توکن API ریلوی رو داخل این ریپو کامیت نکن. `railway_auto.py` توکن رو فقط به‌صورت تعاملی (یا از متغیر محیطی همون لحظه) می‌گیره.
+هیچ‌وقت توکن API ریلوی رو داخل این ریپو کامیت نکن. `railway_auto.py` توکن رو فقط و فقط به‌صورت تعاملی و در لحظه‌ی اجرا از تو می‌پرسه.
