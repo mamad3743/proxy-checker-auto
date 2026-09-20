@@ -3,14 +3,14 @@
 ابزاری برای مانیتور کردن نودهای Edge پراکسی TCP مشترک ریلوی:
 
 - **`ping_check.py`** — تمام IP های داخل `hosts.txt` رو پینگ می‌کنه و می‌گه کدوم‌ها آنلاین هستن.
-- **`railway_auto.py`** — با توکن API اکانت ریلوی لاگین می‌کنه، روی یکی از سرویس‌های خودت یه TCP Proxy می‌سازه تا دامنه‌ای که ریلوی اختصاص داده رو کشف کنه، اون رو به IP تبدیل می‌کنه، تو `hosts.txt` ذخیره می‌کنه و بعد پینگ‌چک رو اجرا می‌کنه.
+- **`railway_auto_v2.py`** — با `railway login` (مرورگری) وارد اکانت ریلوی می‌شه، روی یکی از سرویس‌های خودت یه TCP Proxy می‌سازه تا دامنه‌ای که ریلوی اختصاص داده رو کشف کنه، اون رو به IP تبدیل می‌کنه، تو `hosts.txt` ذخیره می‌کنه و بعد پینگ‌چک رو اجرا می‌کنه.
 - **`hosts.txt`** — لیست `hostname,ip` نودهای شناخته‌شده‌ی پراکسی ریلوی.
 
 ## پیش‌نیازها
 
 - Python نسخه 3.8 به بالا
 - دستور `ping` روی سیستم (روی Windows، Linux، macOS، Termux و iSH از قبل هست)
-- [Railway CLI](https://docs.railway.com/guides/cli) — فقط برای اجرای `railway_auto.py` لازمه
+- [Railway CLI](https://docs.railway.com/guides/cli) — فقط برای اجرای `railway_auto_v2.py` لازمه
 
 ## نصب
 
@@ -20,7 +20,7 @@
 :: پایتون (اگه نصب نیست)
 winget install Python.Python.3
 
-:: Railway CLI (فقط برای railway_auto.py لازمه)
+:: Railway CLI (فقط برای railway_auto_v2.py لازمه)
 npm install -g @railway/cli
 
 :: گرفتن پروژه
@@ -34,7 +34,7 @@ cd proxy-checker-auto
 git clone https://github.com/mamad3743/proxy-checker-auto.git
 cd proxy-checker-auto
 
-# Railway CLI (فقط برای railway_auto.py لازمه)
+# Railway CLI (فقط برای railway_auto_v2.py لازمه)
 bash <(curl -fsSL cli.new)
 ```
 
@@ -44,7 +44,7 @@ bash <(curl -fsSL cli.new)
 pkg update && pkg upgrade
 pkg install python git inetutils   # inetutils دستور ping رو می‌ده
 pkg install nodejs                 # پیش‌نیاز نصب Railway CLI
-npm install -g @railway/cli        # فقط برای railway_auto.py لازمه
+npm install -g @railway/cli        # فقط برای railway_auto_v2.py لازمه
 
 git clone https://github.com/mamad3743/proxy-checker-auto.git
 cd proxy-checker-auto
@@ -55,7 +55,7 @@ cd proxy-checker-auto
 ```bash
 apk update
 apk add python3 git iputils        # iputils دستور ping رو می‌ده
-apk add nodejs npm                 # فقط برای railway_auto.py لازمه
+apk add nodejs npm                 # فقط برای railway_auto_v2.py لازمه
 npm install -g @railway/cli
 
 git clone https://github.com/mamad3743/proxy-checker-auto.git
@@ -77,7 +77,7 @@ python3 ping_check.py
 ### ۲. کشف یه پراکسی جدید + پینگ‌چک کامل
 
 ```bash
-python3 railway_auto.py
+python3 railway_auto_v2.py
 ```
 
 اجرا یه رابط خط‌فرمانی رنگی و مرحله‌به‌مرحله‌ست:
@@ -112,4 +112,4 @@ python3 railway_auto.py
 
 ## امنیت
 
-هیچ‌وقت توکن API ریلوی رو داخل این ریپو کامیت نکن. `railway_auto.py` توکن رو فقط و فقط به‌صورت تعاملی و در لحظه‌ی اجرا از تو می‌پرسه.
+لاگین از طریق `railway login` (مرورگری) انجام می‌شه، پس نیازی نیست هیچ توکنی رو جایی وارد کنی یا نگه داری.
