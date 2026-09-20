@@ -147,6 +147,24 @@ def check_cli_installed():
         return False
 
 
+BLOCK_SIGNS = ("cloudflare", "blocked", "you have been blocked",
+               "backboard.railway.com", "unknownissuer", "error decoding response body")
+
+
+def looks_blocked(text):
+    t = (text or "").lower()
+    return any(sign in t for sign in BLOCK_SIGNS)
+
+
+def attempt_login(env):
+    """One `railway login` attempt. Stdin/stdout stay attached to the
+    terminal (so the pairing prompt/link show up normally); only stderr
+    is captured so we can detect a network-level block afterwards."""
+    result = subprocess.run([RAILWAY_BIN, "login"], env=env,
+                             stderr=subprocess.PIPE, text=True)
+    return result.returncode == 0, (result.stderr or "")
+
+
 def login(env):
     with Spinner("Verifying token..."):
         result = run_railway(["whoami"], env)
@@ -438,9 +456,29 @@ def main():
     env.pop("RAILWAY_API_TOKEN", None)
     env.pop("RAILWAY_TOKEN", None)
 
-    login_result = subprocess.run([RAILWAY_BIN, "login"], env=env)
-    if login_result.returncode != 0:
+    success, err_text = attempt_login(env)
+
+    if not success and looks_blocked(err_text):
+        fail("Blocked before reaching Railway (Cloudflare/network-level block).")
+        info("This is a block on your network/ISP side, not a bug in this script.")
+        print("  " + DIM + "If you have a proxy with a clean IP, this script can route" + RESET)
+        print("  " + DIM + "just this CLI session through it — nothing shared or built-in." + RESET)
+        proxy = input("  Proxy URL (e.g. http://host:port), or Enter to skip: ").strip()
+        if proxy:
+            env["HTTPS_PROXY"] = proxy
+            env["HTTP_PROXY"] = proxy
+            info("Retrying login through the proxy...")
+            success, err_text = attempt_login(env)
+            if not success and looks_blocked(err_text):
+                fail("Still blocked even through that proxy.")
+        if not success:
+            info("Other things worth trying: a different VPN server/protocol,")
+            info("mobile data instead of this network, or DNS set to 1.1.1.1 / 8.8.8.8.")
+            sys.exit(1)
+    elif not success:
         fail("Login was not completed.")
+        if err_text.strip():
+            info(err_text.strip().splitlines()[0])
         sys.exit(1)
 
     if not login(env):
